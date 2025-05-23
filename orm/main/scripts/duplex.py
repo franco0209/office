@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from tkinter import messagebox
-from main.models import Empresa, Cuenta
+from main.models import Empresa, Cuenta, Agencia
 from django.core.exceptions import ValidationError
 
 class GestorApp(ctk.CTk):
@@ -29,7 +29,7 @@ class GestorApp(ctk.CTk):
     def _crear_widgets(self):
         """Crea todos los widgets de la interfaz"""
         # Panel de pestañas principales
-        self.tabs = ctk.CTkTabview(self)
+        self.tabs = ctk.CTkTabview(self)    
         self.empresa_tab = self.tabs.add("Empresas")
         self.cuenta_tab = self.tabs.add("Cuentas")
         
@@ -78,8 +78,6 @@ class GestorApp(ctk.CTk):
             ("key", "Clave única", True),
             ("nombre", "Nombre de la empresa", True),
             ("tipoTicket", "Tipo de ticket", True),
-            ("direccion", "Dirección", False),
-            ("telefono", "Teléfono", False)
         ]
         
         for field, placeholder, required in fields:
@@ -671,6 +669,358 @@ class GestorApp(ctk.CTk):
             
         except Exception as e:
             self.mostrar_feedback(f"❌ Error al eliminar: {str(e)}", "error", "cuenta")
+        
+# =============================================
+# SECCIÓN AGENCIAS
+# =============================================
+
+def _crear_formulario_agencia(self):
+    """Crea el formulario de agencia"""
+    self.agencia_form_frame = ctk.CTkFrame(self.agencia_main_frame, width=350)
+    
+    # Título
+    ctk.CTkLabel(
+        self.agencia_form_frame, 
+        text="Datos de la Agencia", 
+        font=ctk.CTkFont(size=18, weight="bold")
+    ).pack(pady=(10, 20))
+    
+    # Campos del formulario
+    self.agencia_fields = {}
+    fields = [
+        ("key", "Clave única", True),
+        ("nombre", "Nombre de la agencia", True),
+        ("ciudad", "Ciudad", True),
+        ("empresa", "Empresa", True),
+        ("cuenta", "Cuenta", True),
+        ("referencias", "Referencias", False)
+    ]
+    
+    for field, placeholder, required in fields:
+        frame = ctk.CTkFrame(self.agencia_form_frame, fg_color="transparent")
+        frame.pack(fill="x", padx=10, pady=5)
+        
+        label = ctk.CTkLabel(frame, text=f"{placeholder}{'*' if required else ''}:")
+        label.pack(anchor="w")
+        
+        if field in ["empresa", "cuenta"]:
+            # Combobox para relaciones
+            combobox = ctk.CTkComboBox(frame, state="readonly")
+            combobox.pack(fill="x")
+            self.agencia_fields[field] = combobox
+            
+            if field == "empresa":
+                self.empresa_agencia_combobox = combobox
+                self.empresa_agencia_combobox.bind("<<ComboboxSelected>>", self.actualizar_combobox_cuentas)
+            else:
+                self.cuenta_agencia_combobox = combobox
+        else:
+            entry = ctk.CTkEntry(frame, placeholder_text=placeholder)
+            entry.pack(fill="x")
+            self.agencia_fields[field] = entry
+    
+    # Actualizar comboboxes
+    self.actualizar_combobox_empresas_agencia()
+    self.actualizar_combobox_cuentas()
+    
+    # Feedback
+    self.agencia_feedback = ctk.CTkLabel(
+        self.agencia_form_frame, 
+        text="", 
+        text_color="gray",
+        wraplength=300
+    )
+    self.agencia_feedback.pack(pady=10)
+    
+    # Botones
+    btn_frame = ctk.CTkFrame(self.agencia_form_frame, fg_color="transparent")
+    btn_frame.pack(fill="x", padx=10, pady=(10, 0))
+    
+    self.agencia_btn_add = ctk.CTkButton(
+        btn_frame, 
+        text="Agregar", 
+        command=self.agregar_agencia,
+        fg_color="green",
+        hover_color="darkgreen"
+    )
+    self.agencia_btn_add.pack(side="left", expand=True, padx=5)
+    
+    self.agencia_btn_update = ctk.CTkButton(
+        btn_frame, 
+        text="Actualizar", 
+        command=self.actualizar_agencia,
+        state="disabled"
+    )
+    self.agencia_btn_update.pack(side="left", expand=True, padx=5)
+    
+    self.agencia_btn_delete = ctk.CTkButton(
+        btn_frame, 
+        text="Eliminar", 
+        command=self.eliminar_agencia,
+        fg_color="red",
+        hover_color="darkred",
+        state="disabled"
+    )
+    self.agencia_btn_delete.pack(side="left", expand=True, padx=5)
+    
+    self.agencia_btn_clear = ctk.CTkButton(
+        btn_frame, 
+        text="Limpiar", 
+        command=lambda: self.limpiar_formulario('agencia')
+    )
+    self.agencia_btn_clear.pack(side="left", expand=True, padx=5)
+
+def _crear_lista_agencias(self):
+    """Crea el panel de lista de agencias"""
+    self.agencia_list_frame = ctk.CTkFrame(self.agencia_main_frame)
+    
+    # Barra de búsqueda
+    search_frame = ctk.CTkFrame(self.agencia_list_frame, fg_color="transparent")
+    search_frame.pack(fill="x", padx=10, pady=(0, 10))
+    
+    self.agencia_search_entry = ctk.CTkEntry(
+        search_frame, 
+        placeholder_text="Buscar agencias..."
+    )
+    self.agencia_search_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+    self.agencia_search_entry.bind("<KeyRelease>", self.buscar_agencias)
+    
+    ctk.CTkButton(
+        search_frame, 
+        text="Buscar", 
+        width=80,
+        command=self.buscar_agencias
+    ).pack(side="left")
+    
+    # Lista de agencias
+    self.agencia_lista = ctk.CTkScrollableFrame(
+        self.agencia_list_frame, 
+        height=400
+    )
+    self.agencia_lista.pack(fill="both", expand=True, padx=10, pady=10)
+
+def actualizar_combobox_empresas_agencia(self):
+    """Actualiza el combobox de empresas en el formulario de agencias"""
+    empresas = Empresa.objects.all().order_by("nombre")
+    values = [f"{emp.key} - {emp.nombre}" for emp in empresas]
+    self.empresa_agencia_combobox.configure(values=values)
+    if values:
+        self.empresa_agencia_combobox.set(values[0])
+
+def actualizar_combobox_cuentas(self, event=None):
+    """Actualiza el combobox de cuentas basado en la empresa seleccionada"""
+    empresa_seleccionada = self.obtener_empresa_desde_combobox_agencia()
+    
+    if empresa_seleccionada:
+        cuentas = Cuenta.objects.filter(empresa=empresa_seleccionada).order_by("nombre")
+        values = [f"{cuenta.key} - {cuenta.nombre}" for cuenta in cuentas]
+        self.cuenta_agencia_combobox.configure(values=values)
+        if values:
+            self.cuenta_agencia_combobox.set(values[0])
+        else:
+            self.cuenta_agencia_combobox.set("")
+    else:
+        self.cuenta_agencia_combobox.set("")
+        self.cuenta_agencia_combobox.configure(values=[])
+
+def obtener_empresa_desde_combobox_agencia(self):
+    """Obtiene la empresa seleccionada en el combobox de agencias"""
+    seleccion = self.empresa_agencia_combobox.get()
+    if not seleccion:
+        return None
+    
+    key = seleccion.split(" - ")[0]
+    try:
+        return Empresa.objects.get(key=key)
+    except Empresa.DoesNotExist:
+        return None
+
+def obtener_cuenta_desde_combobox_agencia(self):
+    """Obtiene la cuenta seleccionada en el combobox de agencias"""
+    seleccion = self.cuenta_agencia_combobox.get()
+    if not seleccion:
+        return None
+    
+    key = seleccion.split(" - ")[0]
+    try:
+        return Cuenta.objects.get(key=key)
+    except Cuenta.DoesNotExist:
+        return None
+
+def obtener_datos_agencia(self):
+    """Obtiene y valida los datos del formulario de agencia"""
+    datos = {}
+    required_fields = ["key", "nombre", "ciudad", "empresa", "cuenta"]
+    
+    for field, entry in self.agencia_fields.items():
+        if field == "empresa":
+            empresa = self.obtener_empresa_desde_combobox_agencia()
+            if not empresa:
+                raise ValueError("Debe seleccionar una empresa válida")
+            datos["empresa"] = empresa
+        elif field == "cuenta":
+            cuenta = self.obtener_cuenta_desde_combobox_agencia()
+            if not cuenta:
+                raise ValueError("Debe seleccionar una cuenta válida")
+            datos["cuenta"] = cuenta
+        else:
+            value = entry.get().strip()
+            if field in required_fields and not value:
+                raise ValueError(f"El campo '{field}' es obligatorio")
+            datos[field] = value if value else None
+    
+    return datos
+
+def actualizar_lista_agencias(self, agencias=None):
+    """Actualiza la lista de agencias mostrada"""
+    # Limpiar lista actual
+    for widget in self.agencia_lista.winfo_children():
+        widget.destroy()
+    
+    # Obtener agencias si no se proporcionan
+    if agencias is None:
+        agencias = Agencia.objects.all().select_related('empresa', 'cuenta').order_by("nombre")
+    
+    if not agencias.exists():
+        ctk.CTkLabel(
+            self.agencia_lista, 
+            text="No hay agencias registradas.",
+            font=ctk.CTkFont(size=13)
+        ).pack(pady=20)
+        return
+    
+    # Mostrar cada agencia
+    for agencia in agencias:
+        frame = ctk.CTkFrame(self.agencia_lista, height=40)
+        frame.pack(fill="x", pady=2, padx=5)
+        
+        # Mostrar información
+        ctk.CTkLabel(
+            frame, 
+            text=f"{agencia.key} - {agencia.nombre} ({agencia.empresa.nombre}/{agencia.cuenta.nombre})",
+            anchor="w",
+            font=ctk.CTkFont(size=13)
+        ).pack(side="left", fill="x", expand=True, padx=10)
+        
+        # Botón para seleccionar
+        ctk.CTkButton(
+            frame, 
+            text="Seleccionar", 
+            width=80,
+            command=lambda a=agencia: self.cargar_agencia(a)
+        ).pack(side="right", padx=5)
+
+def cargar_agencia(self, agencia):
+    """Carga los datos de una agencia en el formulario"""
+    self.agencia_seleccionada = agencia
+    
+    for field, entry in self.agencia_fields.items():
+        if field == "empresa":
+            # Buscar el índice de la empresa en el combobox
+            empresas = Empresa.objects.all().order_by("nombre")
+            values = [f"{emp.key} - {emp.nombre}" for emp in empresas]
+            try:
+                index = next(i for i, emp in enumerate(empresas) if emp.id == agencia.empresa.id)
+                self.empresa_agencia_combobox.set(values[index])
+            except StopIteration:
+                pass
+        elif field == "cuenta":
+            # Buscar el índice de la cuenta en el combobox
+            cuentas = Cuenta.objects.filter(empresa=agencia.empresa).order_by("nombre")
+            values = [f"{cuenta.key} - {cuenta.nombre}" for cuenta in cuentas]
+            try:
+                index = next(i for i, cuenta in enumerate(cuentas) if cuenta.id == agencia.cuenta.id)
+                self.cuenta_agencia_combobox.set(values[index])
+            except StopIteration:
+                pass
+        else:
+            value = getattr(agencia, field, "")
+            entry.delete(0, 'end')
+            entry.insert(0, str(value) if value else "")
+    
+    self.agencia_btn_add.configure(state="disabled")
+    self.agencia_btn_update.configure(state="normal")
+    self.agencia_btn_delete.configure(state="normal")
+    self.mostrar_feedback(f"Cargada agencia: {agencia.nombre}", "info", "agencia")
+
+def buscar_agencias(self, event=None):
+    """Busca agencias según el texto ingresado"""
+    search_term = self.agencia_search_entry.get().strip()
+    
+    if not search_term:
+        self.actualizar_lista_agencias()
+        return
+    
+    agencias = Agencia.objects.filter(
+        nombre__icontains=search_term
+    ).select_related('empresa', 'cuenta').order_by("nombre")
+    
+    self.actualizar_lista_agencias(agencias)
+
+def agregar_agencia(self):
+    """Agrega una nueva agencia"""
+    try:
+        datos = self.obtener_datos_agencia()
+        
+        # Verificar si ya existe
+        if Agencia.objects.filter(key=datos["key"]).exists():
+            raise ValidationError("Ya existe una agencia con esta clave")
+        
+        # Crear nueva agencia
+        Agencia.objects.create(**datos)
+        
+        self.mostrar_feedback("✅ Agencia agregada exitosamente", "success", "agencia")
+        self.limpiar_formulario('agencia')
+        self.actualizar_lista_agencias()
+        
+    except Exception as e:
+        self.mostrar_feedback(f"❌ Error: {str(e)}", "error", "agencia")
+
+def actualizar_agencia(self):
+    """Actualiza la agencia seleccionada"""
+    if not self.agencia_seleccionada:
+        self.mostrar_feedback("No hay agencia seleccionada", "error", "agencia")
+        return
+        
+    try:
+        datos = self.obtener_datos_agencia()
+        
+        # Actualizar agencia
+        for field, value in datos.items():
+            setattr(self.agencia_seleccionada, field, value)
+        
+        self.agencia_seleccionada.save()
+        
+        self.mostrar_feedback("✅ Agencia actualizada exitosamente", "success", "agencia")
+        self.limpiar_formulario('agencia')
+        self.actualizar_lista_agencias()
+        
+    except Exception as e:
+        self.mostrar_feedback(f"❌ Error: {str(e)}", "error", "agencia")
+
+def eliminar_agencia(self):
+    """Elimina la agencia seleccionada"""
+    if not self.agencia_seleccionada:
+        self.mostrar_feedback("No hay agencia seleccionada", "error", "agencia")
+        return
+        
+    # Confirmación antes de eliminar
+    if not messagebox.askyesno(
+        "Confirmar eliminación",
+        f"¿Estás seguro de eliminar la agencia {self.agencia_seleccionada.nombre}?"
+    ):
+        return
+        
+    try:
+        nombre = self.agencia_seleccionada.nombre
+        self.agencia_seleccionada.delete()
+        
+        self.mostrar_feedback(f"🗑️ Agencia '{nombre}' eliminada", "warning", "agencia")
+        self.limpiar_formulario('agencia')
+        self.actualizar_lista_agencias()
+        
+    except Exception as e:
+        self.mostrar_feedback(f"❌ Error al eliminar: {str(e)}", "error", "agencia")
 
 def run():
     app = GestorApp()

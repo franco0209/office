@@ -256,7 +256,6 @@ def mainIBK(folderPhotos, agencia, ordenarPorFecha = True, invertir = False, dat
     insertTable(doc, imagenes, folderPhotos)
     insertDate(doc=doc)  
     insertAgencia(doc, agencia)
-    getAlcances(datos=datos)
 
     doc.save(archivo_salida)
     print(f"✅ Documento generado: {archivo_salida}")
