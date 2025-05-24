@@ -437,9 +437,19 @@ def añadirObservaciones(ppto, tieneEntregables):
 def sendEmail(tabla, contexto, adjuntos, subjectToReply):
     outlook, inbox = iniciarOutlook()
     original = None
+    bodyHtml = None
     if subjectToReply != "":
         original = buscarCorreoOriginal(subjectToReply, inbox)
-    mail = original.Reply() if original else outlook.CreateItem(0)
+    try:
+        if original:
+            mail = original.ReplyAll()
+        else:
+            raise Exception("Correo original no disponible.")
+    except Exception as e:
+        print(f"No se puede usar .Reply(): {e}")
+        mail = outlook.CreateItem(0)
+        if original:
+            bodyHtml = original.HTMLBody
 
     agregarCuentaRemitente(mail, "cotizaciones@electrototalsecurity.com")
     agregarDestinatarios(mail, contexto["correos"])
@@ -457,7 +467,10 @@ def sendEmail(tabla, contexto, adjuntos, subjectToReply):
     tabla_html = construirTablaHTML(tabla)
     firma_html = construirFirmaHTML(cid)
     cuerpo_html = construirCuerpoCorreo(contexto, tabla_html, firma_html, observaciones)
-    mail.HTMLBody = cuerpo_html + mail.HTMLBody
+    if bodyHtml:
+        mail.HTMLBody = cuerpo_html + bodyHtml
+    else:
+        mail.HTMLBody = cuerpo_html + mail.HTMLBody
 
     for adj in adjuntos:
         try:

@@ -17,6 +17,7 @@ class GestorApp(ctk.CTk):
         # Variables de estado
         self.empresa_seleccionada = None
         self.cuenta_seleccionada = None
+        self.agencia_seleccionada = None
         
         # Crear interfaz
         self._crear_widgets()
@@ -25,6 +26,8 @@ class GestorApp(ctk.CTk):
         # Cargar datos iniciales
         self.actualizar_lista_empresas()
         self.actualizar_lista_cuentas()
+        self.actualizar_lista_agencias()
+
         
     def _crear_widgets(self):
         """Crea todos los widgets de la interfaz"""
@@ -32,6 +35,7 @@ class GestorApp(ctk.CTk):
         self.tabs = ctk.CTkTabview(self)    
         self.empresa_tab = self.tabs.add("Empresas")
         self.cuenta_tab = self.tabs.add("Cuentas")
+        self.agencia_tab = self.tabs.add("Agencias")
         
         # ========== Pestaña de Empresas ==========
         self.empresa_main_frame = ctk.CTkFrame(self.empresa_tab)
@@ -42,6 +46,11 @@ class GestorApp(ctk.CTk):
         self.cuenta_main_frame = ctk.CTkFrame(self.cuenta_tab)
         self._crear_formulario_cuenta()
         self._crear_lista_cuentas()
+        
+        # ========== Pestaña de Agencias ==========
+        self.agencia_main_frame = ctk.CTkFrame(self.agencia_tab)
+        self._crear_formulario_agencia()
+        self._crear_lista_agencias()
         
     def _configurar_layout(self):
         """Configura el layout de los widgets"""
@@ -56,6 +65,11 @@ class GestorApp(ctk.CTk):
         self.cuenta_main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         self.cuenta_form_frame.pack(side="left", fill="y", padx=10, pady=10)
         self.cuenta_list_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+        
+        # Layout pestaña Agencias
+        self.agencia_main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.agencia_form_frame.pack(side="left", fill="y", padx=10, pady=10)
+        self.agencia_list_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
     
     # =============================================
     # SECCIÓN EMPRESAS
@@ -313,6 +327,18 @@ class GestorApp(ctk.CTk):
             self.cuenta_btn_delete.configure(state="disabled")
             self.mostrar_feedback("Formulario limpiado", "info", "cuenta")
             self.actualizar_combobox_empresas()
+        elif tipo == 'agencia':
+            self.agencia_seleccionada = None
+            for field, entry in self.agencia_fields.items():
+                if isinstance(entry, ctk.CTkEntry):
+                    entry.delete(0, 'end')
+            
+            self.agencia_btn_add.configure(state="normal")
+            self.agencia_btn_update.configure(state="disabled")
+            self.agencia_btn_delete.configure(state="disabled")
+            self.mostrar_feedback("Formulario limpiado", "info", "agencia")
+            self.actualizar_combobox_empresas_agencia()
+            self.actualizar_combobox_cuentas_agencia()
     
     def mostrar_feedback(self, mensaje, tipo="info", seccion="empresa"):
         """Muestra mensajes de feedback al usuario"""
@@ -325,8 +351,10 @@ class GestorApp(ctk.CTk):
         
         if seccion == "empresa":
             self.empresa_feedback.configure(text=mensaje, text_color=colors.get(tipo, "gray"))
-        else:
+        elif seccion == "cuenta":
             self.cuenta_feedback.configure(text=mensaje, text_color=colors.get(tipo, "gray"))
+        elif seccion == "agencia":
+            self.agencia_feedback.configure(text=mensaje, text_color=colors.get(tipo, "gray"))
     
     def actualizar_combobox_empresas(self):
         """Actualiza el combobox de empresas con datos actuales"""
@@ -711,7 +739,7 @@ def _crear_formulario_agencia(self):
             
             if field == "empresa":
                 self.empresa_agencia_combobox = combobox
-                self.empresa_agencia_combobox.bind("<<ComboboxSelected>>", self.actualizar_combobox_cuentas)
+                self.empresa_agencia_combobox.bind("<<ComboboxSelected>>", self.actualizar_combobox_cuentas_agencia)
             else:
                 self.cuenta_agencia_combobox = combobox
         else:
@@ -721,7 +749,7 @@ def _crear_formulario_agencia(self):
     
     # Actualizar comboboxes
     self.actualizar_combobox_empresas_agencia()
-    self.actualizar_combobox_cuentas()
+    self.actualizar_combobox_cuentas_agencia()
     
     # Feedback
     self.agencia_feedback = ctk.CTkLabel(
@@ -798,7 +826,7 @@ def _crear_lista_agencias(self):
         height=400
     )
     self.agencia_lista.pack(fill="both", expand=True, padx=10, pady=10)
-
+    
 def actualizar_combobox_empresas_agencia(self):
     """Actualiza el combobox de empresas en el formulario de agencias"""
     empresas = Empresa.objects.all().order_by("nombre")
@@ -807,7 +835,7 @@ def actualizar_combobox_empresas_agencia(self):
     if values:
         self.empresa_agencia_combobox.set(values[0])
 
-def actualizar_combobox_cuentas(self, event=None):
+def actualizar_combobox_cuentas_agencia(self, event=None):
     """Actualiza el combobox de cuentas basado en la empresa seleccionada"""
     empresa_seleccionada = self.obtener_empresa_desde_combobox_agencia()
     
@@ -846,7 +874,7 @@ def obtener_cuenta_desde_combobox_agencia(self):
         return Cuenta.objects.get(key=key)
     except Cuenta.DoesNotExist:
         return None
-
+    
 def obtener_datos_agencia(self):
     """Obtiene y valida los datos del formulario de agencia"""
     datos = {}
